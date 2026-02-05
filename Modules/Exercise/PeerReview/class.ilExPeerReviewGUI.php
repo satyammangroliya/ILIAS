@@ -564,6 +564,8 @@ class ilExPeerReviewGUI
             $sub_data = $this->getSubmissionContent($submission);
             if ($sub_data === '' || $sub_data === '0') {
                 $sub_data = '<a href="' . $file_info["files"]["download_url"] . '">' . $lng->txt("download") . '</a>';
+            } else {
+                $sub_data = $this->gui->html()->escapeCurly($sub_data);
             }
             $props[] = [
                 "prop" => $lng->txt("exc_submission"),
@@ -624,6 +626,8 @@ class ilExPeerReviewGUI
                     if (isset($file_info["files"]["download_url"])) {
                         $sub_data = '<a href="' . $file_info["files"]["download_url"] . '">' . $lng->txt("download") . '</a>';
                     }
+                } else {
+                    $sub_data = $this->gui->html()->escapeCurly($sub_data);
                 }
                 $props[] = [
                     "prop" => $lng->txt("exc_submission"),
@@ -979,8 +983,7 @@ class ilExPeerReviewGUI
         if ($text !== []) {
             $text = array_shift($text);
             if (trim($text["atext"]) !== '' && trim($text["atext"]) !== '0') {
-                // mob id to mob src
-                return nl2br(ilRTE::_replaceMediaObjectImageSrc($text["atext"], 1));
+                return $this->gui->getUIUtil()->formatTextInput($text["atext"]);
             }
         }
         return "";
@@ -1037,6 +1040,8 @@ class ilExPeerReviewGUI
         $sub_data = $this->getSubmissionContent($submission);
         if (($sub_data === '' || $sub_data === '0') && isset($file_info["files"]["download_url"])) {
             $sub_data = '<a href="' . $file_info["files"]["download_url"] . '">' . $lng->txt("download") . '</a>';
+        } else {
+            $sub_data = $this->gui->html()->escapeCurly($sub_data);
         }
 
         $sub = new ilNonEditableValueGUI($lng->txt("exc_submission"), "", true);

@@ -302,14 +302,14 @@ class ilObjUserFolderGUI extends ilObjectGUI
         }
 
         $list_of_users = null;
-        if (!$this->access->checkAccess('read_users', '', USER_FOLDER_ID)
+        if (!$this->access->checkAccess('read', '', USER_FOLDER_ID)
             && $this->access->checkRbacOrPositionPermissionAccess(
-                'read_users',
+                'read',
                 \ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
                 USER_FOLDER_ID
             )) {
             $list_of_users = $this->access->filterUserIdsByRbacOrPositionOfCurrentUser(
-                'read_users',
+                'read',
                 \ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
                 USER_FOLDER_ID,
                 \ilLocalUser::_getAllUserIds(\ilLocalUser::_getUserFolderId())
@@ -353,7 +353,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
     public function filterUserIdsByRbacOrPositionOfCurrentUser(array $user_ids): array
     {
         return $this->access->filterUserIdsByRbacOrPositionOfCurrentUser(
-            'read_users',
+            'read',
             \ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
             USER_FOLDER_ID,
             $user_ids
@@ -751,18 +751,18 @@ class ilObjUserFolderGUI extends ilObjectGUI
             );
 
             if (!$this->access->checkAccess(
-                'read_users',
+                'read',
                 '',
                 USER_FOLDER_ID
             ) &&
                 $this->access->checkRbacOrPositionPermissionAccess(
-                    'read_users',
+                    'read',
                     \ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
                     USER_FOLDER_ID
                 )) {
                 $users = \ilLocalUser::_getAllUserIds(\ilLocalUser::_getUserFolderId());
                 $filtered_users = $this->access->filterUserIdsByRbacOrPositionOfCurrentUser(
-                    'read_users',
+                    'read',
                     \ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
                     USER_FOLDER_ID,
                     $users
@@ -777,7 +777,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
             return $utab->getUserIdsForFilter();
         } else {
             return $this->access->filterUserIdsByRbacOrPositionOfCurrentUser(
-                'read_users',
+                'read',
                 ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
                 USER_FOLDER_ID,
                 $this->requested_ids
@@ -1004,7 +1004,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
     public function importCancelledObject(): void
     {
         $import_dir = $this->getImportDir();
-        if ($this->fi->hasDir($import_dir)) {
+        if ($this->filesystem->hasDir($import_dir)) {
             $this->filesystem->deleteDir($import_dir);
         }
 
@@ -1770,7 +1770,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
                 (string) ilSessionControl::DEFAULT_MAX_IDLE_AFTER_FIRST_REQUEST
             ),
 
-            'login_max_attempts' => $security->getLoginMaxAttempts(),
+            'login_max_attempts' => $security->getLoginMaxAttempts() > 0 ? $security->getLoginMaxAttempts() : '',
             'ps_prevent_simultaneous_logins' => (int) $security->isPreventionOfSimultaneousLoginsEnabled(),
             'password_assistance' => (bool) $this->settings->get('password_assistance'),
             'letter_avatars' => (int) $this->settings->get('letter_avatars'),
@@ -2694,13 +2694,13 @@ class ilObjUserFolderGUI extends ilObjectGUI
         $confirmDialog->addItem('', '0', $tpl->get());
 
         foreach ($post['chb'] as $postVar => $value) {
-            $confirmDialog->addHiddenItem('chb[$postVar]', $value);
+            $confirmDialog->addHiddenItem("chb[{$postVar}]", $value);
         }
         foreach ($post['select'] as $postVar => $value) {
-            $confirmDialog->addHiddenItem('select[$postVar]', $value);
+            $confirmDialog->addHiddenItem("select[{$postVar}]", $value);
         }
         foreach ($post['current'] as $postVar => $value) {
-            $confirmDialog->addHiddenItem('current[$postVar]', $value);
+            $confirmDialog->addHiddenItem("current[{$postVar}]", $value);
         }
         $this->tpl->setContent($confirmDialog->getHTML());
     }
@@ -2923,7 +2923,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
      */
     protected function performExportObject(): void
     {
-        $this->checkPermission('write,read_users');
+        $this->checkPermission('write,read');
 
         $this->object->buildExportFile($this->user_request->getExportType());
         $this->ctrl->redirect(
@@ -2934,7 +2934,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
 
     public function exportObject(): void
     {
-        $this->checkPermission('write,read_users');
+        $this->checkPermission('write,read');
 
         $export_types = [
             'userfolder_export_excel_x86',
@@ -3240,8 +3240,9 @@ class ilObjUserFolderGUI extends ilObjectGUI
 
     protected function getTabs(): void
     {
-        if ($this->rbac_system->checkAccess(
+        if ($this->access->checkRbacOrPositionPermissionAccess(
             'visible,read',
+            \ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
             $this->object->getRefId()
         )) {
             $this->tabs_gui->addTarget(
@@ -3568,15 +3569,16 @@ class ilObjUserFolderGUI extends ilObjectGUI
 
     public function searchUserAccessFilterCallable(array $a_user_ids): array // Missing array type.
     {
-        if (!$this->checkPermissionBool('read_users')) {
-            $a_user_ids = $this->access->filterUserIdsByPositionOfCurrentUser(
-                \ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
-                USER_FOLDER_ID,
-                $a_user_ids
-            );
+        if ($this->checkPermissionBool('read', '', '', USER_FOLDER_ID)
+            || $this->checkPermissionBool('read_user')) {
+            return $a_user_ids;
         }
 
-        return $a_user_ids;
+        return $this->access->filterUserIdsByPositionOfCurrentUser(
+            \ilObjUserFolder::ORG_OP_EDIT_USER_ACCOUNTS,
+            USER_FOLDER_ID,
+            $a_user_ids
+        );
     }
 
     /**
@@ -3679,7 +3681,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
             );
         }
 
-        if ($this->checkPermissionBool('write,read_users')) {
+        if ($this->checkPermissionBool('write,read')) {
             $this->object->buildExportFile(
                 ilObjUserFolder::FILE_TYPE_EXCEL,
                 $user_ids
@@ -3715,7 +3717,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
             );
         }
 
-        if ($this->checkPermissionBool('write,read_users')) {
+        if ($this->checkPermissionBool('write,read')) {
             $this->object->buildExportFile(
                 ilObjUserFolder::FILE_TYPE_CSV,
                 $user_ids
@@ -3750,7 +3752,7 @@ class ilObjUserFolderGUI extends ilObjectGUI
                 'view'
             );
         }
-        if ($this->checkPermissionBool('write,read_users')) {
+        if ($this->checkPermissionBool('write,read')) {
             $this->object->buildExportFile(
                 ilObjUserFolder::FILE_TYPE_XML,
                 $user_ids

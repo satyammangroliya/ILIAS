@@ -32,14 +32,19 @@ class ilDclExportGUI extends ilExportGUI
     public function createExportFile(): void
     {
         $format = "";
-        if ($this->http->wrapper()->post()->has('format')) {
-            $format = $this->http->wrapper()->post()->retrieve('format', $this->refinery->kindlyTo()->string());
-        }
+        $format = $this->initFormatFromPost();
         if ($format === 'xlsx') {
             $this->checkForExportableFields();
+            $this->checkForAsyncEnabled();
+            (new ilDclContentExporter($this->obj->getRefId(), null))->exportAsync();
+        } elseif ($format === 'xml') {
+            $exp = new ilExport();
+            $exp->exportObject($this->obj->getType(), $this->obj->getId());
+            $this->tpl->setOnScreenMessage('success', $this->lng->txt("exp_file_created"), true);
         }
 
-        parent::createExportFile();
+        $this->ctrl->redirect($this, "listExportFiles");
+
     }
 
     /**
@@ -57,6 +62,19 @@ class ilDclExportGUI extends ilExportGUI
         }
 
         $this->tpl->setOnScreenMessage('failure', $this->lng->txt('dcl_no_export_data_available'), true);
+        $this->ctrl->redirect($this, "listExportFiles");
+
+        return false;
+    }
+
+    protected function checkForAsyncEnabled(): bool
+    {
+        global $DIC;
+        if ($DIC->settings()->get('soap_user_administration', '0') === '1') {
+            return true;
+        }
+
+        $this->tpl->setOnScreenMessage('failure', $this->lng->txt('dcl_no_export_async_config'), true);
         $this->ctrl->redirect($this, "listExportFiles");
 
         return false;

@@ -23,11 +23,11 @@ use ILIAS\UI\Renderer as UIRenderer;
 use ILIAS\HTTP\Services as HTTPServices;
 use ILIAS\GlobalScreen\Services as GlobalScreenServices;
 use ILIAS\Refinery\Factory as Refinery;
-use ILIAS\Refinery\Transformation;
 use ILIAS\Test\InternalRequestService;
 use ILIAS\HTTP\Wrapper\ArrayBasedRequestWrapper;
 use ILIAS\DI\LoggingServices;
 use ILIAS\Skill\Service\SkillService;
+use ILIAS\Style\Content\Service as ContentStyle;
 
 require_once "./Modules/Test/classes/inc.AssessmentConstants.php";
 
@@ -62,6 +62,7 @@ class ilTestServiceGUI
      * `ilTestPlayerAbstractGUI::populateIntantResponseModal()`.
      */
     protected ilGlobalTemplateInterface|ilTemplate $tpl;
+    protected ContentStyle $content_style;
     protected ilErrorHandling $error;
     protected ilAccess $access;
     protected HTTPServices $http;
@@ -120,6 +121,7 @@ class ilTestServiceGUI
         global $DIC;
         $this->lng = $DIC['lng'];
         $this->tpl = $DIC['tpl'];
+        $this->content_style = $DIC->contentStyle();
         $this->error = $DIC['ilErr'];
         $this->access = $DIC['ilAccess'];
         $this->http = $DIC['http'];
@@ -393,7 +395,7 @@ class ilTestServiceGUI
                         $template->setVariable("COUNTER_QUESTION", $counter . ". ");
                         $template->setVariable("TXT_QUESTION_ID", $this->lng->txt('question_id_short'));
                         $template->setVariable("QUESTION_ID", $question_gui->object->getId());
-                        $template->setVariable("QUESTION_TITLE", $this->object->getQuestionTitle($question_gui->object->getTitle()));
+                        $template->setVariable("QUESTION_TITLE", $this->object->getQuestionTitle($question_gui->object->getTitleForHTMLOutput()));
 
                         if ($objectives_list !== null) {
                             $objectives = $this->lng->txt('tst_res_lo_objectives_header') . ': ';
@@ -424,7 +426,18 @@ class ilTestServiceGUI
                             $compare_template->setVariable('SOLUTION', $best_output);
                             $template->setVariable('SOLUTION_OUTPUT', $compare_template->get());
                         } else {
-                            $result_output = $question_gui->getSolutionOutput($active_id, $pass, $show_graphical_output, false, $show_question_only, $show_feedback);
+                            $result_output = $question_gui->getSolutionOutput(
+                                $active_id,
+                                $pass,
+                                $show_graphical_output,
+                                false,
+                                $show_question_only,
+                                $show_feedback,
+                                false,
+                                false,
+                                true,
+                                $show_feedback
+                            );
                             $template->setVariable('SOLUTION_OUTPUT', $result_output);
                         }
 
@@ -479,7 +492,7 @@ class ilTestServiceGUI
                     $scoretemplate = new ilTemplate("tpl.il_as_tst_manual_scoring_points.html", true, true, "Modules/Test");
                     #mbecker: No such block. $this->tpl->setCurrentBlock("printview_question");
                     $template->setVariable("COUNTER_QUESTION", $counter . ". ");
-                    $template->setVariable("QUESTION_TITLE", $this->object->getQuestionTitle($question_gui->object->getTitle()));
+                    $template->setVariable("QUESTION_TITLE", $this->object->getQuestionTitle($question_gui->object->getTitleForHTMLOutput()));
                     $points = $question_gui->object->getMaximumPoints();
                     if ($points == 1) {
                         $template->setVariable("QUESTION_POINTS", $points . " " . $this->lng->txt("point"));
@@ -616,33 +629,20 @@ class ilTestServiceGUI
 
     /**
      * Returns the user data for a test results output
-     *
-     * @param ilTestSession
-     * @param integer $user_id The user ID of the user
-     * @param boolean $overwrite_anonymity TRUE if the anonymity status should be overwritten, FALSE otherwise
-     * @return string HTML code of the user data for the test results
-     * @access public
      */
-    public function getAdditionalUsrDataHtmlAndPopulateWindowTitle($testSession, $active_id, $overwrite_anonymity = false): string
+    public function getAdditionalUsrDataHtmlAndPopulateWindowTitle(int $active_id): string
     {
-        if (!is_object($testSession)) {
-            throw new InvalidArgumentException('Not an object, expected ilTestSession');
-        }
         $template = new ilTemplate("tpl.il_as_tst_results_userdata.html", true, true, "Modules/Test");
-        $user_id = $this->object->_getUserIdFromActiveId($active_id);
-        if (strlen(ilObjUser::_lookupLogin($user_id)) > 0) {
+        $user_id = ilObjTest::_getUserIdFromActiveId($active_id);
+        if (ilObjUser::_lookupLogin($user_id) !== '') {
             $user = new ilObjUser($user_id);
         } else {
             $user = new ilObjUser();
             $user->setLastname($this->lng->txt("deleted_user"));
         }
-        $t = $testSession->getSubmittedTimestamp();
-        if (!$t) {
-            $t = $this->object->_getLastAccess($testSession->getActiveId());
-        }
 
         if ($this->getObjectiveOrientedContainer()->isObjectiveOrientedPresentationRequired()) {
-            $uname = $this->object->userLookupFullName($user_id, $overwrite_anonymity);
+            $uname = $this->object->userLookupFullName($user_id, false);
             $template->setCurrentBlock("name");
             $template->setVariable('TXT_USR_NAME', $this->lng->txt("name"));
             $template->setVariable('VALUE_USR_NAME', $uname);
@@ -650,7 +650,7 @@ class ilTestServiceGUI
         }
 
         $title_matric = "";
-        if (strlen($user->getMatriculation()) && (($this->object->getAnonymity() == false) || ($overwrite_anonymity))) {
+        if ($user->getMatriculation() !== '' && !$this->object->getAnonymity()) {
             $template->setCurrentBlock("matriculation");
             $template->setVariable("TXT_USR_MATRIC", $this->lng->txt("matriculation"));
             $template->setVariable("VALUE_USR_MATRIC", $user->getMatriculation());
@@ -719,9 +719,9 @@ class ilTestServiceGUI
         // I set both old and new since the old one is set as well in several places.
         $maxpoints = $question_gui->object->getMaximumPoints();
         if ($maxpoints == 1) {
-            $template->setVariable("QUESTION_TITLE", $this->object->getQuestionTitle($question_gui->object->getTitle()) . " (" . $maxpoints . " " . $this->lng->txt("point") . ")");
+            $template->setVariable("QUESTION_TITLE", $this->object->getQuestionTitle($question_gui->object->getTitleForHTMLOutput()) . " (" . $maxpoints . " " . $this->lng->txt("point") . ")");
         } else {
-            $template->setVariable("QUESTION_TITLE", $this->object->getQuestionTitle($question_gui->object->getTitle()) . " (" . $maxpoints . " " . $this->lng->txt("points") . ")");
+            $template->setVariable("QUESTION_TITLE", $this->object->getQuestionTitle($question_gui->object->getTitleForHTMLOutput()) . " (" . $maxpoints . " " . $this->lng->txt("points") . ")");
         }
         if ($objectives_list !== null) {
             $objectives = $this->lng->txt('tst_res_lo_objectives_header') . ': ';
@@ -872,7 +872,7 @@ class ilTestServiceGUI
         }
 
 
-        $user_data = $this->getAdditionalUsrDataHtmlAndPopulateWindowTitle($testSession, $active_id, true);
+        $user_data = $this->getAdditionalUsrDataHtmlAndPopulateWindowTitle($active_id);
         $template->setVariable("TEXT_HEADING", sprintf($this->lng->txt("tst_result_user_name"), $uname));
         $template->setVariable("USER_DATA", $user_data);
 
@@ -973,15 +973,15 @@ class ilTestServiceGUI
 
     protected function isGradingMessageRequired(): bool
     {
-        if ($this->getObjectiveOrientedContainer()->isObjectiveOrientedPresentationRequired()) {
+        $session = $this->testSessionFactory->getSession();
+        if ($this->getObjectiveOrientedContainer()->isObjectiveOrientedPresentationRequired()
+            || $this->object->getScoreSettings()->getScoringSettings()->getPassScoring() === SCORE_LAST_PASS
+                && $session->getLastFinishedPass() < $session->getLastStartedPass()) {
             return false;
         }
 
-        if ($this->object->isShowGradingStatusEnabled()) {
-            return true;
-        }
-
-        if ($this->object->isShowGradingMarkEnabled()) {
+        if ($this->object->isShowGradingStatusEnabled()
+            || $this->object->isShowGradingMarkEnabled()) {
             return true;
         }
 

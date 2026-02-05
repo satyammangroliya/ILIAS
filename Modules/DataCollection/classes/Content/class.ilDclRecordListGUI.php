@@ -113,7 +113,7 @@ class ilDclRecordListGUI
      */
     public function executeCommand(): void
     {
-        if (!$this->checkAccess()) {
+        if (!ilObjDataCollectionAccess::hasAccessTo($this->getRefId(), $this->table_id, $this->tableview_id)) {
             $this->tpl->setOnScreenMessage('failure', $this->lng->txt('permission_denied'), true);
             return;
         }
@@ -125,9 +125,6 @@ class ilDclRecordListGUI
         // whereas 'listRecords' handels the filters "normally", filling them from the POST-variable
         switch ($cmd) {
             case self::CMD_SHOW:
-                $this->setSubTabs($this->mode);
-                $this->listRecords(true);
-                break;
             case self::CMD_CANCEL_DELETE:
             case self::CMD_LIST_RECORDS:
                 $this->setSubTabs($this->mode);
@@ -150,9 +147,9 @@ class ilDclRecordListGUI
         }
     }
 
-    public function listRecords(bool $use_tableview_filter = false): void
+    public function listRecords(): void
     {
-        $list = $this->getRecordListTableGUI($use_tableview_filter);
+        $list = $this->getRecordListTableGUI();
 
         $this->createSwitchers();
 
@@ -231,6 +228,7 @@ class ilDclRecordListGUI
         $form->addItem($item);
 
         $file = new ilFileInputGUI($this->lng->txt("import_file"), "import_file");
+        $file->setSuffixes(['xlsx']);
         $file->setRequired(true);
         $form->addItem($file);
 
@@ -289,11 +287,7 @@ class ilDclRecordListGUI
             $output->setVariable("WARNING", $warning);
             $output->parseCurrentBlock();
         }
-        if (!count($warnings)) {
-            $output->setCurrentBlock("warnings");
-            $output->setVariable("WARNING", $this->lng->txt("dcl_no_warnings"));
-            $output->parseCurrentBlock();
-        }
+
         $output->setVariable("BACK_LINK", $this->ctrl->getLinkTargetByClass(ilDclRecordListGUI::class, "listRecords"));
         $output->setVariable("BACK", $this->lng->txt("back"));
         $this->tpl->setContent($output->get());
@@ -477,6 +471,13 @@ class ilDclRecordListGUI
     protected function setSubTabs(string $active_mode = self::GET_MODE): void
     {
         $this->ctrl->setParameter($this, self::GET_MODE, self::MODE_VIEW);
+        if ($this->http->wrapper()->query()->has(self::GET_TABLEVIEW_ID)) {
+            $this->ctrl->setParameter(
+                $this,
+                self::GET_TABLEVIEW_ID,
+                $this->http->wrapper()->query()->retrieve(self::GET_TABLEVIEW_ID, $this->refinery->kindlyTo()->int())
+            );
+        }
         $this->tabs->addSubTab(
             self::MODE_VIEW,
             $this->lng->txt('view'),
@@ -496,18 +497,12 @@ class ilDclRecordListGUI
         $this->ctrl->clearParameters($this);
     }
 
-    protected function getRecordListTableGUI(bool $use_tableview_filter): ilDclRecordListTableGUI
+    protected function getRecordListTableGUI(): ilDclRecordListTableGUI
     {
         $table_obj = $this->table_obj;
 
         $list = new ilDclRecordListTableGUI($this, "listRecords", $table_obj, $this->tableview_id, $this->mode);
         $list->initFilter();
-        if ($use_tableview_filter) {
-            $list->initFilter();
-            $list->resetOffset();
-            $list->resetFilter();
-            $list->initFilterFromTableView();
-        }
 
         $list->setExternalSegmentation(true);
         $list->setExternalSorting(true);
@@ -552,30 +547,19 @@ class ilDclRecordListGUI
         $switcher->addTableSwitcherToToolbar(
             $tables,
             self::class,
-            self::CMD_SHOW
+            self::CMD_SHOW,
+            $this->getTableId()
         );
 
         $switcher->addViewSwitcherToToolbar(
-            $this->table_obj->getVisibleTableViews($this->parent_obj->getRefId()),
+            $this->table_obj->getVisibleTableViews(),
             $this->getTableId(),
             self::class,
-            self::CMD_SHOW
+            self::CMD_SHOW,
+            $this->getTableviewId()
         );
         $this->ctrl->setParameterByClass(self::class, self::GET_TABLEVIEW_ID, $this->tableview_id);
 
-    }
-
-    protected function checkAccess(): bool
-    {
-        if (null === $this->table_id || null === $this->tableview_id) {
-            return false;
-        }
-
-        return ilObjDataCollectionAccess::hasAccessTo(
-            $this->parent_obj->getRefId(),
-            $this->table_id,
-            $this->tableview_id
-        );
     }
 
     public function getTableId(): int

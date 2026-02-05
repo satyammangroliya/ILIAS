@@ -105,4 +105,66 @@ class ilWikiDBUpdateSteps implements \ilDatabaseUpdateSteps
         }
     }
 
+    public function step_6(): void
+    {
+        $db = $this->db;
+        $set = $db->queryF(
+            "SELECT * FROM il_wiki_data " .
+            " WHERE public_notes = %s ",
+            ["integer"],
+            [1]
+        );
+        while ($rec = $db->fetchAssoc($set)) {
+            $set2 = $db->queryF(
+                "SELECT * FROM note_settings " .
+                " WHERE rep_obj_id = %s AND obj_id = %s",
+                ["integer", "integer"],
+                [$rec["id"], 0]
+            );
+            if ($rec2 = $db->fetchAssoc($set2)) {
+                $db->update(
+                    "note_settings",
+                    [
+                    "activated" => ["integer", 1]
+                ],
+                    [    // where
+                        "rep_obj_id" => ["integer", $rec["id"]],
+                        "obj_id" => ["integer", 0]
+                    ]
+                );
+            } else {
+                $db->insert("note_settings", [
+                    "rep_obj_id" => ["integer", $rec["id"]],
+                    "obj_id" => ["integer", 0],
+                    "activated" => ["integer", 1],
+                    "obj_type" => ["text", "wiki"]
+                ]);
+            }
+        }
+
+    }
+
+    public function step_7(): void
+    {
+        $db = $this->db;
+        if (!$db->tableColumnExists('il_wiki_page', 'create_date')) {
+            $this->db->addTableColumn('il_wiki_page', 'create_date', array(
+                'type' => 'timestamp',
+                'notnull' => false
+            ));
+        }
+    }
+
+    public function step_8(): void
+    {
+        $db = $this->db;
+        if (!$db->tableColumnExists('il_wiki_page', 'import_id')) {
+            $this->db->addTableColumn('il_wiki_page', 'import_id', array(
+                'type' => 'text',
+                'notnull' => false,
+                'length' => 50
+            ));
+        }
+    }
+
 }

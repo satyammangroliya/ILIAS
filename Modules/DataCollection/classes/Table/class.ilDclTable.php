@@ -150,16 +150,6 @@ class ilDclTable
             $field->doDelete();
         }
 
-        //		// SW: Fix #12794 und #11405
-        //		// Problem is that when the DC object gets deleted, $this::getCollectionObject() tries to load the DC but it's not in the DB anymore
-        //		// If $delete_main_table is true, avoid getting the collection object
-        //		$exec_delete = false;
-        //		if ($delete_main_table) {
-        //			$exec_delete = true;
-        //		}
-        //		if (!$exec_delete && $this->getCollectionObject()->getFirstVisibleTableId() != $this->getId()) {
-        //			$exec_delete = true;
-        //		}
         if (!$delete_only_content) {
             $query = "DELETE FROM il_dcl_table WHERE id = " . $this->db->quote($this->getId(), "integer");
             $this->db->manipulate($query);
@@ -359,9 +349,6 @@ class ilDclTable
         return $field;
     }
 
-    /**
-     * @return int[]
-     */
     public function getFieldIds(): array
     {
         $field_ids = [];
@@ -493,12 +480,11 @@ class ilDclTable
     }
 
     /**
-     * For current user
      * @return ilDclTableView[]
      */
-    public function getVisibleTableViews(int $ref_id, bool $with_active_detailedview = false, int $user_id = 0): array
+    public function getVisibleTableViews(int $user_id = 0, bool $with_active_detailedview = false): array
     {
-        if (ilObjDataCollectionAccess::hasWriteAccess($ref_id, $user_id) && !$with_active_detailedview) {
+        if (ilObjDataCollectionAccess::hasWriteAccess($this->getCollectionObject()->getRefId(), $user_id) && !$with_active_detailedview) {
             return $this->getTableViews();
         }
 
@@ -514,16 +500,12 @@ class ilDclTable
         return $visible_views;
     }
 
-    /**
-     * get id of first (for current user) available view
-     */
-    public function getFirstTableViewId(int $ref_id, int $user_id = 0, bool $with_detailed_view = false): ?int
+    public function getFirstTableViewId(int $user_id = 0, bool $with_detailed_view = false): ?int
     {
-        $uid = $user_id;
-        $array = $this->getVisibleTableViews($ref_id, $with_detailed_view, $uid);
+        $array = $this->getVisibleTableViews($user_id, $with_detailed_view);
         $tableview = array_shift($array);
 
-        return $tableview ? $tableview->getId() : null;
+        return $tableview?->getId();
     }
 
     /**
@@ -1059,9 +1041,6 @@ class ilDclTable
             if (!$orig_field->isStandardField()) {
                 $class_name = get_class($orig_field);
                 $new_field = new $class_name();
-                if ($new_field instanceof ilDclReferenceFieldModel && $new_field->getFieldRef()->getTableId() === 0) {
-                    continue;
-                }
                 $new_field->setTableId($this->getId());
                 $new_field->cloneStructure((int) $orig_field->getId());
                 $new_fields[$orig_field->getId()] = $new_field;

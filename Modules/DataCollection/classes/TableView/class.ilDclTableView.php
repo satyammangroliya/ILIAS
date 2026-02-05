@@ -336,37 +336,31 @@ class ilDclTableView extends ActiveRecord
         }
     }
 
-    /**
-     * @param ilDclTableView $orig
-     * @param array          $new_fields fields mapping
-     */
     public function cloneStructure(ilDclTableView $orig, array $new_fields): void
     {
         global $DIC;
-        //clone structure
-        $this->setTitle($orig->getTitle() . ' ' . $DIC->language()->txt('copy_of_suffix'));
+        $title = $orig->getTitle();
+        if ($orig->getTable()->getId() === $this->getTable()->getId()) {
+            $title .= ' ' . $DIC->language()->txt('copy_of_suffix');
+        }
+        $this->setTitle($title);
         $this->setOrder($orig->getOrder());
         $this->setDescription($orig->getDescription());
         $this->setRoles($orig->getRoles());
-        $this->create(false); //create default setting, adjust them later
+        $this->create(false);
 
-        //clone default values
         $f = new ilDclDefaultValueFactory();
 
-        //clone fieldsettings
         foreach ($orig->getFieldSettings() as $orig_fieldsetting) {
             $new_fieldsetting = new ilDclTableViewFieldSetting();
             $new_fieldsetting->setTableviewId($this->getId());
             if ($new_fields[$orig_fieldsetting->getField()] ?? null) {
-                //normal fields
                 $new_fieldsetting->setField($new_fields[$orig_fieldsetting->getField()]->getId());
             } else {
-                //standard fields
                 $new_fieldsetting->setField($orig_fieldsetting->getField());
             }
             $new_field_id = $new_fieldsetting->cloneStructure($orig_fieldsetting);
 
-            //clone default value
             $datatype = $orig_fieldsetting->getFieldObject()->getDatatypeId();
             $match = ilDclTableViewBaseDefaultValue::findSingle($datatype, $orig_fieldsetting->getId());
 
@@ -377,14 +371,13 @@ class ilDclTableView extends ActiveRecord
                 $new_default_value->create();
             }
         }
+        $this->createFieldSetting('comments');
 
-        //clone pageobject
         if (ilDclDetailedViewDefinition::exists($orig->getId())) {
             $orig_pageobject = new ilDclDetailedViewDefinition($orig->getId());
             $orig_pageobject->copy($this->getId());
         }
 
-        // mandatory for all cloning functions
         ilDclCache::setCloneOf($orig->getId(), $this->getId(), ilDclCache::TYPE_TABLEVIEW);
     }
 
@@ -403,10 +396,9 @@ class ilDclTableView extends ActiveRecord
 
     /**
      * @param      $table_id
-     * @param bool $create_default_settings
      * @return ilDclTableView|ActiveRecord
      */
-    public static function createOrGetStandardView(int $table_id, bool $create_default_settings = true): ActiveRecord
+    public static function createOrGetStandardView(int $table_id): ActiveRecord
     {
         if ($standardview = self::where(['table_id' => $table_id])->orderBy('tableview_order')->first()) {
             return $standardview;
@@ -443,9 +435,9 @@ class ilDclTableView extends ActiveRecord
         $view->setTableId($table_id);
         // bugfix mantis 0023307
         $lng = $DIC['lng'];
-        $view->setTitle($lng->txt('dcl_title_standardview'));
+        $view->setTitle($lng->txt('dcl_title_standard'));
         $view->setTableviewOrder(10);
-        $view->create($create_default_settings);
+        $view->create();
 
         return $view;
     }

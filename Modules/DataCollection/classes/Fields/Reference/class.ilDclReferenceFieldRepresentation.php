@@ -22,52 +22,84 @@ class ilDclReferenceFieldRepresentation extends ilDclBaseFieldRepresentation
 {
     public const REFERENCE_SEPARATOR = " -> ";
 
-    /**
-     * @param ilPropertyFormGUI $form
-     * @param int|null          $record_id
-     * @return ilSelectInputGUI|ilMultiSelectInputGUI
-     */
-    public function getInputField(ilPropertyFormGUI $form, ?int $record_id = null): ilFormPropertyGUI
+    public function getInputField(ilPropertyFormGUI $form, ?int $record_id = null): ilSelectInputGUI|ilMultiSelectInputGUI
     {
-        if (!$this->getField()->getProperty(ilDclBaseFieldModel::PROP_N_REFERENCE)) {
-            $input = new ilSelectInputGUI($this->getField()->getTitle(), 'field_' . $this->getField()->getId());
-        } else {
+        if ($this->getField()->getProperty(ilDclBaseFieldModel::PROP_N_REFERENCE)) {
             $input = new ilMultiSelectInputGUI($this->getField()->getTitle(), 'field_' . $this->getField()->getId());
             $input->setWidth(100);
             $input->setWidthUnit('%');
+        } else {
+            $input = new ilSelectInputGUI($this->getField()->getTitle(), 'field_' . $this->getField()->getId());
         }
 
         $this->setupInputField($input, $this->getField());
 
-        $fieldref = $this->getField()->getProperty(ilDclBaseFieldModel::PROP_REFERENCE);
-
-        $reffield = ilDclCache::getFieldCache((int) $fieldref);
-        $options = [];
+        $options = $this->getSortedRecords();
         if (!$this->getField()->getProperty(ilDclBaseFieldModel::PROP_N_REFERENCE)) {
-            $options[""] = $this->lng->txt('dcl_please_select');
+            $options = ['' => $this->lng->txt('dcl_please_select')] + $options;
         }
+
+        $input->setOptions($options);
+        if ($input instanceof ilMultiSelectInputGUI) {
+            $input->setHeight(32 * min(5, max(1, count($options))));
+        }
+
+        $ref_id = $this->http->wrapper()->query()->retrieve('ref_id', $this->refinery->kindlyTo()->int());
+
+        $fieldref = (int) $this->getField()->getProperty(ilDclBaseFieldModel::PROP_REFERENCE);
+        $reffield = ilDclCache::getFieldCache($fieldref);
+        if (ilObjDataCollectionAccess::hasPermissionToAddRecord($ref_id, $reffield->getTableId())) {
+            $input->addCustomAttribute('data-ref="1"');
+            $input->addCustomAttribute('data-ref-table-id="' . $reffield->getTableId() . '"');
+            $input->addCustomAttribute('data-ref-field-id="' . $reffield->getId() . '"');
+        }
+
+        return $input;
+    }
+
+    public function addFilterInputFieldToTable(ilTable2GUI $table): array|string|null
+    {
+        $input = $table->addFilterItemByMetaType(
+            "filter_" . $this->getField()->getId(),
+            ilTable2GUI::FILTER_SELECT,
+            false,
+            $this->getField()->getId()
+        );
+        $options = ['' => $this->lng->txt('dcl_all_entries')]
+            + $this->getSortedRecords()
+            + ['none' => $this->lng->txt('dcl_no_entry')];
+        $input->setOptions($options);
+
+        $this->setupFilterInputField($input);
+
+        return $this->getFilterInputFieldValue($input);
+    }
+
+    protected function getSortedRecords(): array
+    {
+        $options = [];
+        $fieldref = (int) $this->getField()->getProperty(ilDclBaseFieldModel::PROP_REFERENCE);
+        $reffield = ilDclCache::getFieldCache($fieldref);
         $reftable = ilDclCache::getTableCache($reffield->getTableId());
         foreach ($reftable->getRecords() as $record) {
-            // If the referenced field is MOB or FILE, we display the filename in the dropdown
+            $record_field = $record->getRecordField($fieldref);
             switch ($reffield->getDatatypeId()) {
                 case ilDclDatatype::INPUTFORMAT_FILEUPLOAD:
-                    $field_value = $record->getRecordFieldValue($fieldref);
-                    if ($field_value) {
-                        $file_obj = new ilObjFile($field_value, false);
+                    if ($record_field->getValue()) {
+                        $file_obj = new ilObjFile($record_field->getValue(), false);
                         $options[$record->getId()] = $file_obj->getFileName();
                     }
                     break;
                 case ilDclDatatype::INPUTFORMAT_MOB:
-                    $media_obj = new ilObjMediaObject($record->getRecordFieldValue($fieldref));
+                    $media_obj = new ilObjMediaObject($record_field->getValue());
                     $options[$record->getId()] = $media_obj->getTitle();
                     break;
-                case ilDclDatatype::INPUTFORMAT_DATETIME:
-                    $options[$record->getId()] = strtotime($record->getRecordFieldSingleHTML($fieldref));
-                    // TT #0019091: options2 are the actual values, options the timestamp for sorting
-                    $options2[$record->getId()] = $record->getRecordFieldSingleHTML($fieldref);
+                case ilDclDatatype::INPUTFORMAT_DATE:
+                    $options[$record->getId()] = strtotime($record->getRecordField($fieldref)->getPlainText());
+                    $options2[$record->getId()] = $record->getRecordField($fieldref)->getPlainText();
                     break;
                 case ilDclDatatype::INPUTFORMAT_TEXT:
-                    $value = $record->getRecordFieldValue($fieldref);
+                    $value = $record_field->getValue();
                     if ($record->getRecordField((int) $fieldref)->getField()->hasProperty(ilDclBaseFieldModel::PROP_URL)) {
                         if (!is_array($value)) {
                             $value = ['title' => '', 'link' => $value];
@@ -77,68 +109,25 @@ class ilDclReferenceFieldRepresentation extends ilDclBaseFieldRepresentation
                     $options[$record->getId()] = $value;
                     break;
                 case ilDclDatatype::INPUTFORMAT_ILIAS_REF:
-                    $options[$record->getId()] = $record->getRecordFieldRepresentationValue($fieldref);
+                    $value = $record_field->getValue();
+                    $options[$record->getId()] = ilObject::_lookupTitle(ilObject::_lookupObjectId($value)) . ' [' . $value . ']';
                     break;
                 default:
-                    $options[$record->getId()] = $record->getRecordFieldExportValue($fieldref);
+                    $options[$record->getId()] = $record_field->getExportValue();
                     break;
             }
         }
         asort($options, SORT_NATURAL | SORT_FLAG_CASE);
 
-        // TT #0019091: restore the actual values after sorting with timestamp
-        if ($reffield->getDatatypeId() == ilDclDatatype::INPUTFORMAT_DATETIME) {
+        if ($reffield->getDatatypeId() === ilDclDatatype::INPUTFORMAT_DATE) {
             foreach ($options as $key => $opt) {
                 if ($key != "" && isset($options2) && is_array($options2)) {
                     $options[$key] = $options2[$key];
                 }
             }
-            // the option 'please select' messes with the order, therefore we reset it
-            unset($options[""]);
-            $options = ["" => $this->lng->txt('dcl_please_select')] + $options;
         }
 
-        $input->setOptions($options);
-
-        $ref_id = $this->http->wrapper()->query()->retrieve('ref_id', $this->refinery->kindlyTo()->int());
-
-        if (ilObjDataCollectionAccess::hasPermissionToAddRecord($ref_id, $reftable->getId())) {
-            $input->addCustomAttribute('data-ref="1"');
-            $input->addCustomAttribute('data-ref-table-id="' . $reftable->getId() . '"');
-            $input->addCustomAttribute('data-ref-field-id="' . $reffield->getId() . '"');
-        }
-
-        return $input;
-    }
-
-    /**
-     * @return string|array|null
-     */
-    public function addFilterInputFieldToTable(ilTable2GUI $table)
-    {
-        $input = $table->addFilterItemByMetaType(
-            "filter_" . $this->getField()->getId(),
-            ilTable2GUI::FILTER_SELECT,
-            false,
-            $this->getField()->getId()
-        );
-        $ref_field_id = $this->getField()->getProperty(ilDclBaseFieldModel::PROP_REFERENCE);
-        $ref_field = ilDclCache::getFieldCache((int) $ref_field_id);
-        $ref_table = ilDclCache::getTableCache($ref_field->getTableId());
-        $options = [];
-        foreach ($ref_table->getRecords() as $record) {
-            $options[$record->getId()] = $record->getRecordFieldPlainText($ref_field_id);
-        }
-        // Sort by values ASC
-        asort($options);
-        $options = ['' => $this->lng->txt('dcl_all_entries')]
-            + $options
-            + ['none' => $this->lng->txt('dcl_no_entry')];
-        $input->setOptions($options);
-
-        $this->setupFilterInputField($input);
-
-        return $this->getFilterInputFieldValue($input);
+        return $options;
     }
 
     /**

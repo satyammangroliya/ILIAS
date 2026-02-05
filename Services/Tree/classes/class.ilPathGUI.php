@@ -38,6 +38,7 @@ class ilPathGUI
     protected ilTree $tree;
     protected ilCtrlInterface $ctrl;
     protected ilObjectDefinition $objectDefinition;
+    private ilAccessHandler $access;
 
     /**
      * Constructor
@@ -52,6 +53,7 @@ class ilPathGUI
         $this->lng = $DIC->language();
         $this->ctrl = $DIC['ilCtrl'];
         $this->objectDefinition = $DIC['objDefinition'];
+        $this->access = $DIC->access();
     }
 
     /**
@@ -198,7 +200,9 @@ class ilPathGUI
                     $tpl->parseCurrentBlock();
                 }
 
-                if (!$this->tree->isDeleted($ref_id)) {
+                if (!$this->tree->isDeleted($ref_id) &&
+                    ($this->access->checkAccess('visible', '', (int) $ref_id)
+                        || $this->access->checkAccess('read', '', (int) $ref_id))) {
                     $tpl->setCurrentBlock('locator_item');
                     $tpl->setVariable('LINK_ITEM', $this->buildLink($ref_id, $type));
                     $tpl->setVariable('ITEM', $title);
@@ -228,8 +232,14 @@ class ilPathGUI
     protected function buildLink(int $ref_id, string $type): string
     {
         if ($this->objectDefinition->isAdministrationObject($type)) {
+            $current_parameters = $this->ctrl->getParameterArrayByClass(ilAdministrationGUI::class);
             $this->ctrl->setParameterByClass(ilAdministrationGUI::class, 'ref_id', $ref_id);
-            return $this->ctrl->getLinkTargetByClass(ilAdministrationGUI::class, 'jump');
+            $link = $this->ctrl->getLinkTargetByClass(ilAdministrationGUI::class, 'jump');
+            $this->ctrl->clearParameterByClass(ilAdministrationGUI::class, 'ref_id');
+            if (isset($current_parameters['ref_id'])) {
+                $this->ctrl->setParameterByClass(ilAdministrationGUI::class, 'ref_id', $current_parameters['ref_id']);
+            }
+            return $link;
         }
         return ilLink::_getLink($ref_id, $type);
     }

@@ -459,7 +459,9 @@ class ilUserImportParser extends ilSaxParser
                 }
                 $this->userObj->setLanguage($a_attribs['Language'] ?? '');
                 $this->userObj->setImportId($a_attribs['Id'] ?? '');
-                $this->action = (is_null($a_attribs['Action'])) ? 'Insert' : $a_attribs['Action'];
+                $this->action = isset($a_attribs['Action'])
+                    ? $a_attribs['Action']
+                    : 'Insert';
                 $this->currPassword = null;
                 $this->currPasswordType = null;
                 $this->currActive = null;
@@ -578,7 +580,7 @@ class ilUserImportParser extends ilSaxParser
                 // if we have an object id, store it
                 $this->user_id = -1;
 
-                if (!is_null($a_attribs['Id']) && $this->getUserMappingMode() === self::IL_USER_MAPPING_ID) {
+                if (isset($a_attribs['Id']) && $this->getUserMappingMode() === self::IL_USER_MAPPING_ID) {
                     if (is_numeric($a_attribs['Id'])) {
                         $this->user_id = (int) $a_attribs['Id'];
                     } elseif (($id = (int) ilUtil::__extractId($a_attribs['Id'], (int) IL_INST_ID)) > 0) {
@@ -586,7 +588,7 @@ class ilUserImportParser extends ilSaxParser
                     }
                 }
 
-                $this->action = (is_null($a_attribs['Action'])) ? 'Insert' : $a_attribs['Action'];
+                $this->action = !isset($a_attribs['Action']) ? 'Insert' : $a_attribs['Action'];
                 if ($this->action !== 'Insert'
                 && $this->action !== 'Update'
                 && $this->action !== 'Delete') {
@@ -818,13 +820,19 @@ class ilUserImportParser extends ilSaxParser
     ): void {
         $this->rbac_admin->deassignUser($a_role_id, $a_user_obj->getId());
 
-        if (substr(ilObject::_lookupTitle($a_role_id), 0, 6) === 'il_crs' ||
-            substr(ilObject::_lookupTitle($a_role_id), 0, 6) === 'il_grp') {
-            $obj = $this->rbac_review->getObjectOfRole($a_role_id);
-            $ref = ilObject::_getAllReferences($obj);
-            $ref_id = end($ref);
-            $this->recommended_content_manager->removeObjectRecommendation($a_user_obj->getId(), $ref_id);
+        if (substr(ilObject::_lookupTitle($a_role_id), 0, 6) !== 'il_crs'
+            && substr(ilObject::_lookupTitle($a_role_id), 0, 6) !== 'il_grp') {
+            return;
         }
+
+        $ref = ilObject::_getAllReferences(
+            $this->rbac_review->getObjectOfRole($a_role_id)
+        );
+        $ref_id = end($ref);
+        if (!$ref_id) {
+            return;
+        }
+        $this->recommended_content_manager->removeObjectRecommendation($a_user_obj->getId(), $ref_id);
     }
 
     protected function tagContained(string $tagname): bool

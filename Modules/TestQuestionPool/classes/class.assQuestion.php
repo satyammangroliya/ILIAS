@@ -399,7 +399,7 @@ abstract class assQuestion
 
     public function getTitleForHTMLOutput(): string
     {
-        return $this->refinery->string()->stripTags()->transform($this->title);
+        return htmlspecialchars($this->title);
     }
 
     public function getTitleFilenameCompliant(): string
@@ -429,7 +429,7 @@ abstract class assQuestion
 
     public function getDescriptionForHTMLOutput(): string
     {
-        return $this->refinery->string()->stripTags()->transform($this->comment);
+        return htmlspecialchars($this->comment);
     }
 
     public function getThumbSize(): int
@@ -1158,8 +1158,9 @@ abstract class assQuestion
     {
         if ($a_q_id > 0) {
             $page = new ilAssQuestionPage($a_q_id);
-
-            $xml = str_replace("il__qst_" . $a_q_id, "il__qst_" . $this->id, $page->getXMLContent());
+            $page->buildDom();
+            ilPCPlugged::handleCopiedPluggedContent($page, $page->getDomDoc());
+            $xml = str_replace("il__qst_" . $a_q_id, "il__qst_" . $this->id, $page->getXMLFromDom());
             $this->page->setXMLContent($xml);
             $this->page->updateFromXML();
         }
@@ -1740,7 +1741,7 @@ abstract class assQuestion
 
         $this->syncSuggestedSolutions($this->getOriginalId(), $original_obj_id);
         $this->syncXHTMLMediaObjectsOfQuestion();
-        $this->afterSyncWithOriginal($this->getId(), $this->getOriginalId(), $this->getObjId(), $original_obj_id);
+        $this->afterSyncWithOriginal($this->getOriginalId(), $this->getId(), $original_obj_id, $this->getObjId());
         $this->syncHints();
     }
 
@@ -1939,7 +1940,8 @@ abstract class assQuestion
         float $maxpoints,
         int $pass,
         bool $manualscoring,
-        bool $obligationsEnabled
+        bool $obligationsEnabled,
+        ?int $test_id = null
     ): bool {
         global $DIC;
         $ilDB = $DIC['ilDB'];
@@ -1989,8 +1991,8 @@ abstract class assQuestion
             }
 
             if (self::isForcePassResultUpdateEnabled() || $old_points != $points || $rowsnum == 0) {
-                $test_id = ilObjTest::_lookupTestObjIdForQuestionId($question_id);
-                if ($test_id === null) {
+                $test_id = $test_id ? (int) ilObjTest::_getObjectIDFromTestID($test_id) : ilObjTest::_lookupTestObjIdForQuestionId($question_id);
+                if ($test_id === null || $test_id == 0) {
                     return false;
                 }
                 $test = new ilObjTest(
@@ -2237,7 +2239,7 @@ abstract class assQuestion
             $question_gui->object->feedbackOBJ = new $feedbackObjectClassname($question_gui->object, $ilCtrl, $ilDB, $lng);
 
             $assSettings = new ilSetting('assessment');
-            $processLockerFactory = new ilAssQuestionProcessLockerFactory($assSettings, $ilDB);
+            $processLockerFactory = new ilAssQuestionProcessLockerFactory($assSettings, $ilDB, ilLoggerFactory::getLogger('tst'));
             $processLockerFactory->setQuestionId($question_gui->object->getId());
             $processLockerFactory->setUserId($ilUser->getId());
             $processLockerFactory->setAssessmentLogEnabled(ilObjAssessmentFolder::_enabledAssessmentLogging());
