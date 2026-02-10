@@ -1517,6 +1517,8 @@ class ilTable2GUI extends ilTableGUI
             return;
         }
 
+        ilYuiUtil::initConnection();
+
         $ccnt = 0;
 
         // render standard filter
@@ -2256,8 +2258,12 @@ class ilTable2GUI extends ilTableGUI
                         $button["sel_var"],
                         $button["options"],
                         false,
-                        true
+                        true,
+                        0,
+                        "",
+                        array("aria-label" => $lng->txt("action"))
                     )
+                    
                 );
                 $this->tpl->setVariable("MI_BTN_NAME", $button["cmd"]);
                 $this->tpl->setVariable("MI_BTN_VALUE", $button["text"]);
@@ -2272,8 +2278,12 @@ class ilTable2GUI extends ilTableGUI
                             $button["sel_var"] . "_2",
                             $button["options"],
                             false,
-                            true
+                            true,
+                            0,
+                            "",
+                            array("aria-label" => $lng->txt("action"))
                         )
+                        
                     );
                     $this->tpl->setVariable("MI_BTN_NAME", $button["cmd"]);
                     $this->tpl->setVariable("MI_BTN_VALUE", $button["text"]);
@@ -2299,8 +2309,18 @@ class ilTable2GUI extends ilTableGUI
             }
             $this->tpl->setVariable(
                 "SELECT_CMDS",
-                ilLegacyFormElementsUtil::formSelect("", "selected_cmd", $sel, false, true)
+                ilLegacyFormElementsUtil::formSelect(
+                    "",                      // selected
+                    "selected_cmd2",         // name
+                    $sel,                    // options
+                    false,                   // use_multi
+                    true,                    // submit_after_change
+                    0,                       // size
+                    "",                      // css class
+                    array("aria-label" => $lng->txt("action"))
+                )
             );
+            
             $this->tpl->setVariable("TXT_EXECUTE", $lng->txt("execute"));
             $this->tpl->parseCurrentBlock();
             $arrow = true;
@@ -2320,7 +2340,16 @@ class ilTable2GUI extends ilTableGUI
                 }
                 $this->tpl->setVariable(
                     "SELECT_CMDS",
-                    ilLegacyFormElementsUtil::formSelect("", "selected_cmd2", $sel, false, true)
+                    ilLegacyFormElementsUtil::formSelect(
+                        "",                      // selected
+                        "selected_cmd2",         // name
+                        $sel,                    // options
+                        false,                   // use_multi
+                        true,                    // submit_after_change
+                        0,                       // size
+                        "",                      // css class
+                        array("aria-label" => $lng->txt("action"))
+                    )
                 );
                 $this->tpl->setVariable("TXT_EXECUTE", $lng->txt("execute"));
                 $this->tpl->parseCurrentBlock();
